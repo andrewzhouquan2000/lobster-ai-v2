@@ -1,13 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // 静态导出（用于 OSS 托管）
-  output: 'export',
-  trailingSlash: true,
+  // Vercel 部署 - 移除静态导出以支持 API Routes
+  // output: 'export',  // 注释掉，Vercel 原生支持 SSR
   
   // 图片优化配置
   images: {
-    unoptimized: true,  // 静态导出需要禁用图片优化
+    unoptimized: true,
   },
   
   // 环境变量
