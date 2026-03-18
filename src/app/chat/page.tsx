@@ -57,12 +57,12 @@ const defaultAgents: AgentProgress[] = [
   { id: 4, name: 'DevOps Lobster', role: '部署运维', avatar: '⚙️', status: 'waiting', task: '等待任务分配', progress: 0 },
 ];
 
-// 模拟的 Agent 响应（增加延迟以便测试暂停/继续功能）
+// 模拟的 Agent 响应
 const agentResponses = [
-  { agent: 'CEO', avatar: '🦞', content: '收到！我来分析需求并协调团队。让我先拆解一下任务...', delay: 8000, taskDesc: '分析需求文档...' },
-  { agent: 'Coder', avatar: '💻', content: '明白，我来评估技术方案。\n\n初步分析：\n1. 需要数据层\n2. 核心逻辑层\n3. 输出层\n\n开始编码...', delay: 8000, taskDesc: '编写代码框架...' },
-  { agent: 'Designer', avatar: '🎨', content: '收到需求，我来设计用户界面和交互流程。', delay: 8000, taskDesc: '设计 UI 原型...' },
-  { agent: 'DevOps', avatar: '⚙️', content: '好的，我来准备部署环境和 CI/CD 配置。', delay: 8000, taskDesc: '配置部署环境...' },
+  { agent: 'CEO', avatar: '🦞', content: '收到！我来分析需求并协调团队。让我先拆解一下任务...', delay: 1500, taskDesc: '分析需求文档...' },
+  { agent: 'Coder', avatar: '💻', content: '明白，我来评估技术方案。\n\n初步分析：\n1. 需要数据层\n2. 核心逻辑层\n3. 输出层\n\n开始编码...', delay: 3000, taskDesc: '编写代码框架...' },
+  { agent: 'Designer', avatar: '🎨', content: '收到需求，我来设计用户界面和交互流程。', delay: 2500, taskDesc: '设计 UI 原型...' },
+  { agent: 'DevOps', avatar: '⚙️', content: '好的，我来准备部署环境和 CI/CD 配置。', delay: 2000, taskDesc: '配置部署环境...' },
 ];
 
 function ChatContent() {
@@ -80,12 +80,22 @@ function ChatContent() {
   const [hasOutputFiles, setHasOutputFiles] = useState(false);
   const [taskControl, setTaskControl] = useState<TaskControlState>({ isPaused: false, isCancelled: false });
   const [executionState, setExecutionState] = useState<ExecutionState | null>(null);
+  const [showWelcome, setShowWelcome] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const timeoutRefs = useRef<NodeJS.Timeout[]>([]);
   
   // Flag to check if task was paused mid-execution (not completed)
   const wasPausedMidExecution = useRef(false);
+
+  // Check if first visit - show welcome guide
+  useEffect(() => {
+    const hasSeenWelcome = localStorage.getItem('lobster-hasSeenWelcome');
+    if (!hasSeenWelcome && isNewProject) {
+      setShowWelcome(true);
+      localStorage.setItem('lobster-hasSeenWelcome', 'true');
+    }
+  }, [isNewProject]);
 
   // Get current time in HH:mm format
   const getCurrentTime = useCallback(() => {
@@ -437,38 +447,53 @@ function ChatContent() {
             {agents.map((agent) => (
               <div 
                 key={agent.id}
-                className={`relative p-3 rounded-xl border ${
+                className={`relative p-3 rounded-xl border transition-all duration-300 ${
                   agent.status === 'running' 
-                    ? 'border-blue-200 bg-blue-50/50' 
+                    ? 'border-blue-300 bg-gradient-to-br from-blue-50 to-white shadow-sm' 
                     : agent.status === 'completed'
-                    ? 'border-green-200 bg-green-50/50'
+                    ? 'border-green-300 bg-gradient-to-br from-green-50 to-white shadow-sm'
                     : agent.status === 'paused'
-                    ? 'border-yellow-200 bg-yellow-50/50'
+                    ? 'border-yellow-300 bg-gradient-to-br from-yellow-50 to-white shadow-sm'
                     : agent.status === 'cancelled'
-                    ? 'border-red-200 bg-red-50/50'
-                    : 'border-gray-100 bg-gray-50'
+                    ? 'border-red-300 bg-gradient-to-br from-red-50 to-white shadow-sm'
+                    : 'border-gray-100 bg-gray-50 hover:border-gray-200'
                 }`}
               >
+                {/* Status indicator animation for running agents */}
+                {agent.status === 'running' && (
+                  <div className="absolute top-2 right-2">
+                    <span className="flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 mb-1.5">
                   <div className="relative">
-                    <div className="w-7 h-7 rounded-full bg-white shadow-sm flex items-center justify-center text-base">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-lg ${
+                      agent.status === 'running' ? 'bg-blue-100' :
+                      agent.status === 'completed' ? 'bg-green-100' :
+                      agent.status === 'paused' ? 'bg-yellow-100' :
+                      agent.status === 'cancelled' ? 'bg-red-100' :
+                      'bg-white shadow-sm'
+                    }`}>
                       {agent.avatar}
                     </div>
-                    <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${getStatusColor(agent.status)}`} />
+                    <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${getStatusColor(agent.status)}`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-[#1A1A2E] truncate">{agent.name}</p>
+                    <p className="text-xs font-medium text-[#1A1A2E] truncate">{agent.name.replace(' Lobster', '')}</p>
                     <p className="text-[10px] text-gray-400">{getStatusText(agent.status)}</p>
                   </div>
                 </div>
-                <p className="text-[10px] text-gray-500 truncate">{agent.task}</p>
+                <p className="text-[10px] text-gray-500 truncate pl-10">{agent.task}</p>
                 {agent.status !== 'waiting' && agent.status !== 'cancelled' && (
-                  <div className="h-1 bg-gray-200 rounded-full overflow-hidden mt-1.5">
+                  <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mt-2 ml-10">
                     <div 
                       className={`h-full rounded-full transition-all duration-500 ${
-                        agent.status === 'completed' ? 'bg-green-400' : 
-                        agent.status === 'paused' ? 'bg-yellow-400' : 
-                        'bg-blue-400'
+                        agent.status === 'completed' ? 'bg-gradient-to-r from-green-400 to-green-500' : 
+                        agent.status === 'paused' ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' : 
+                        'bg-gradient-to-r from-blue-400 to-blue-500'
                       }`}
                       style={{ width: `${agent.progress}%` }}
                     />
@@ -563,6 +588,35 @@ function ChatContent() {
 
       {/* Input */}
       <div className="fixed bottom-16 left-0 right-0 bg-white border-t border-gray-100 px-4 py-3">
+        {/* Quick Tips - 快捷操作提示 */}
+        {isNewProject && messages.length === 0 && (
+          <div className="flex gap-2 mb-2 overflow-x-auto pb-1 scrollbar-hide">
+            <button 
+              onClick={() => setInput('帮我创建一个网站')}
+              className="shrink-0 px-3 py-1.5 text-xs bg-orange-50 text-[#FF6B3D] rounded-full hover:bg-orange-100 transition-colors"
+            >
+              🌐 创建网站
+            </button>
+            <button 
+              onClick={() => setInput('帮我分析数据并生成报告')}
+              className="shrink-0 px-3 py-1.5 text-xs bg-blue-50 text-blue-500 rounded-full hover:bg-blue-100 transition-colors"
+            >
+              📊 数据分析
+            </button>
+            <button 
+              onClick={() => setInput('帮我设计一个移动应用')}
+              className="shrink-0 px-3 py-1.5 text-xs bg-purple-50 text-purple-500 rounded-full hover:bg-purple-100 transition-colors"
+            >
+              📱 应用设计
+            </button>
+            <button 
+              onClick={() => setInput('帮我写一个自动化脚本')}
+              className="shrink-0 px-3 py-1.5 text-xs bg-green-50 text-green-500 rounded-full hover:bg-green-100 transition-colors"
+            >
+              ⚡ 自动化脚本
+            </button>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <button className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
             <span>+</span>
@@ -576,7 +630,7 @@ function ChatContent() {
                 handleSendMessage();
               }
             }}
-            placeholder="输入消息..."
+            placeholder="描述你的需求，AI 团队将协作完成..."
             className="flex-1 h-9 text-sm bg-gray-50 border-0 rounded-full px-4 focus:outline-none focus:ring-2 focus:ring-[#FF6B3D]/20"
           />
           <button 
@@ -591,6 +645,65 @@ function ChatContent() {
           </button>
         </div>
       </div>
+
+      {/* Welcome Guide Modal - 首次使用引导 */}
+      {showWelcome && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl">
+            <div className="text-center mb-4">
+              <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-[#FF6B3D] to-[#FF8F6B] flex items-center justify-center text-3xl mb-3">
+                🦞
+              </div>
+              <h2 className="text-lg font-bold text-[#1A1A2E]">欢迎来到 Lobster AI！</h2>
+              <p className="text-sm text-gray-500 mt-1">你的 AI 团队已就绪</p>
+            </div>
+            
+            <div className="space-y-3 mb-6">
+              <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
+                <span className="text-xl">🦞</span>
+                <div>
+                  <p className="text-sm font-medium text-[#1A1A2E]">CEO Lobster</p>
+                  <p className="text-xs text-gray-500">协调团队，拆解任务</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
+                <span className="text-xl">💻</span>
+                <div>
+                  <p className="text-sm font-medium text-[#1A1A2E]">Coder Lobster</p>
+                  <p className="text-xs text-gray-500">编写代码，实现功能</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
+                <span className="text-xl">🎨</span>
+                <div>
+                  <p className="text-sm font-medium text-[#1A1A2E]">Designer Lobster</p>
+                  <p className="text-xs text-gray-500">UI/UX 设计</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
+                <span className="text-xl">⚙️</span>
+                <div>
+                  <p className="text-sm font-medium text-[#1A1A2E]">DevOps Lobster</p>
+                  <p className="text-xs text-gray-500">部署运维，监控告警</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-r from-[#FF6B3D]/10 to-[#FF8F6B]/10 rounded-xl p-3 mb-4">
+              <p className="text-xs text-gray-600">
+                💡 <strong>提示：</strong>在执行过程中，你可以随时<strong>暂停</strong>或<strong>取消</strong>任务
+              </p>
+            </div>
+
+            <button 
+              onClick={() => setShowWelcome(false)}
+              className="w-full h-11 bg-gradient-to-r from-[#FF6B3D] to-[#FF8F6B] text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
+            >
+              开始使用
+            </button>
+          </div>
+        </div>
+      )}
 
       <BottomNav />
     </div>
