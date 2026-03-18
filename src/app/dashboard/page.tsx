@@ -163,7 +163,7 @@ export default function DashboardPage() {
         <div className="space-y-3">
           {projects.map((project) => (
             <div key={project.id} className="relative group">
-              <Link href="/chat" className="block">
+              <Link href={`/chat?name=${encodeURIComponent(project.name)}`} className="block">
                 <Card className="border border-gray-100 rounded-xl shadow-sm hover:border-[#FF6B3D]/30 transition-colors cursor-pointer">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">

@@ -456,7 +456,7 @@ function ChatContent() {
       <div className="bg-white px-4 py-3 border-b border-gray-100 flex items-center gap-3">
         <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-sm">📁</div>
         <div className="flex-1">
-          <h1 className="font-semibold text-[#1A1A2E] text-sm">{isNewProject ? projectName : '股票分析工具'}</h1>
+          <h1 className="font-semibold text-[#1A1A2E] text-sm">{projectName}</h1>
           <p className="text-xs text-gray-400">{agents.filter(a => a.status === 'running').length} 个 Agent 执行中</p>
         </div>
         <button 
