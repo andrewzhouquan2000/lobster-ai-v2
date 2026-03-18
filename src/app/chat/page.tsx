@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState, useEffect, useRef, Suspense, useCallback } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import BottomNav from '@/components/BottomNav';
 
@@ -14,14 +15,6 @@ interface Message {
   time: string;
   isUser?: boolean;
 }
-
-const initialMessages: Message[] = [
-  { id: 1, agent: 'CEO', avatar: '🦞', content: '收到，我来安排开发任务。Coder，请开始实现股票分析工具。', time: '14:30' },
-  { id: 2, agent: 'Coder', avatar: '💻', content: '好的，我来分析需求并开始编写代码。\n\n预计需要以下模块：\n1. 数据获取层\n2. 分析引擎\n3. 报告生成', time: '14:32' },
-  { id: 3, agent: 'User', avatar: '👤', content: '好的，开始吧', time: '14:35', isUser: true },
-  { id: 4, agent: 'Coder', avatar: '💻', content: '✅ 数据获取模块已完成\n```python\ndef get_stock_price(symbol):\n    return fetch_data(symbol)\n```', time: '14:45' },
-  { id: 5, agent: 'DevOps', avatar: '⚙️', content: '我已创建 OSS bucket，准备部署', time: '14:50' },
-];
 
 // Agent status type
 type AgentStatus = 'waiting' | 'running' | 'completed';
@@ -36,46 +29,69 @@ interface AgentProgress {
   progress: number;
 }
 
-const initialAgents: AgentProgress[] = [
-  { id: 1, name: 'CEO Lobster', role: '任务协调', avatar: '🦞', status: 'completed', task: '需求分析与任务分配', progress: 100 },
-  { id: 2, name: 'Coder Lobster', role: '代码开发', avatar: '💻', status: 'running', task: '实现数据获取模块...', progress: 65 },
-  { id: 3, name: 'Designer Lobster', role: 'UI/UX', avatar: '🎨', status: 'waiting', task: '等待设计需求', progress: 0 },
-  { id: 4, name: 'DevOps Lobster', role: '部署运维', avatar: '⚙️', status: 'waiting', task: '等待代码完成', progress: 0 },
+interface LogEntry {
+  time: string;
+  agent: string;
+  action: string;
+  type: 'running' | 'success' | 'info';
+}
+
+// 初始 Agent 配置（等待状态）
+const defaultAgents: AgentProgress[] = [
+  { id: 1, name: 'CEO Lobster', role: '任务协调', avatar: '🦞', status: 'waiting', task: '等待任务分配', progress: 0 },
+  { id: 2, name: 'Coder Lobster', role: '代码开发', avatar: '💻', status: 'waiting', task: '等待任务分配', progress: 0 },
+  { id: 3, name: 'Designer Lobster', role: 'UI/UX', avatar: '🎨', status: 'waiting', task: '等待任务分配', progress: 0 },
+  { id: 4, name: 'DevOps Lobster', role: '部署运维', avatar: '⚙️', status: 'waiting', task: '等待任务分配', progress: 0 },
 ];
 
-const logs = [
-  { time: '14:52', agent: 'Coder', action: '正在编写 analyzer.py...', type: 'running' },
-  { time: '14:50', agent: 'DevOps', action: '创建 OSS bucket 完成', type: 'success' },
-  { time: '14:48', agent: 'Coder', action: '数据获取模块开发中', type: 'info' },
-  { time: '14:45', agent: 'Coder', action: '完成 fetch_data.py', type: 'success' },
-  { time: '14:42', agent: 'CEO', action: '任务已分配给团队', type: 'success' },
-  { time: '14:40', agent: 'CEO', action: '分析需求中...', type: 'info' },
+// 模拟的 Agent 响应
+const agentResponses = [
+  { agent: 'CEO', avatar: '🦞', content: '收到！我来分析需求并协调团队。让我先拆解一下任务...', delay: 500 },
+  { agent: 'Coder', avatar: '💻', content: '明白，我来评估技术方案。\n\n初步分析：\n1. 需要数据层\n2. 核心逻辑层\n3. 输出层\n\n开始编码...', delay: 1500 },
+  { agent: 'Designer', avatar: '🎨', content: '收到需求，我来设计用户界面和交互流程。', delay: 2500 },
+  { agent: 'DevOps', avatar: '⚙️', content: '好的，我来准备部署环境和 CI/CD 配置。', delay: 2000 },
 ];
 
 function ChatContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const isNewProject = searchParams.get('new') === 'true';
   const projectName = searchParams.get('name') || '新项目';
   
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [agents, setAgents] = useState<AgentProgress[]>(initialAgents);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [agents, setAgents] = useState<AgentProgress[]>(defaultAgents);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showProgressPanel, setShowProgressPanel] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [hasOutputFiles, setHasOutputFiles] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Get current time in HH:mm format
-  const getCurrentTime = () => {
+  const getCurrentTime = useCallback(() => {
     const now = new Date();
     return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-  };
+  }, []);
+
+  // Add log entry
+  const addLog = useCallback((agent: string, action: string, type: 'running' | 'success' | 'info') => {
+    setLogs(prev => [{ time: getCurrentTime(), agent, action, type }, ...prev].slice(0, 20));
+  }, [getCurrentTime]);
+
+  // Update agent status
+  const updateAgentStatus = useCallback((agentId: number, status: AgentStatus, task: string, progress: number) => {
+    setAgents(prev => prev.map(a => 
+      a.id === agentId ? { ...a, status, task, progress } : a
+    ));
+  }, []);
 
   // Handle send message
   const handleSendMessage = () => {
-    if (!input.trim()) return;
+    if (!input.trim() || isProcessing) return;
     
-    const newMessage: Message = {
-      id: messages.length + 1,
+    const userMessage: Message = {
+      id: Date.now(),
       agent: 'User',
       avatar: '👤',
       content: input.trim(),
@@ -83,22 +99,61 @@ function ChatContent() {
       isUser: true,
     };
     
-    setMessages(prev => [...prev, newMessage]);
+    setMessages(prev => [...prev, userMessage]);
     setInput('');
+    setIsProcessing(true);
+
+    // 开始 Agent 协作流程
+    addLog('System', '收到用户需求，开始分析...', 'info');
+    updateAgentStatus(1, 'running', '分析用户需求...', 10);
+
+    // 模拟 Agent 响应序列
+    let messageDelay = 800;
+    agentResponses.forEach((response, index) => {
+      setTimeout(() => {
+        const newMessage: Message = {
+          id: Date.now() + index,
+          agent: response.agent,
+          avatar: response.avatar,
+          content: response.content,
+          time: getCurrentTime(),
+        };
+        setMessages(prev => [...prev, newMessage]);
+        
+        // 更新对应 Agent 状态
+        const agentId = index + 1;
+        updateAgentStatus(agentId, 'running', '执行任务中...', 20 + index * 20);
+        addLog(response.agent, response.content.split('\n')[0].substring(0, 30) + '...', 'running');
+        
+        // 最后一个响应后完成
+        if (index === agentResponses.length - 1) {
+          setTimeout(() => {
+            // 标记完成
+            setAgents(prev => prev.map(a => ({ ...a, status: 'completed' as AgentStatus, progress: 100, task: '任务完成' })));
+            addLog('CEO', '任务分配完成，团队开始工作', 'success');
+            
+            // 添加完成提示
+            const completionMessage: Message = {
+              id: Date.now() + 100,
+              agent: 'CEO',
+              avatar: '🦞',
+              content: '✅ 团队已就绪，开始执行任务！\n\n💡 你可以随时查看 **📁 文件** 页面了解产出文件进度。',
+              time: getCurrentTime(),
+            };
+            setMessages(prev => [...prev, completionMessage]);
+            setHasOutputFiles(true);
+            setIsProcessing(false);
+          }, 1000);
+        }
+      }, messageDelay);
+      messageDelay += response.delay;
+    });
   };
 
   // Calculate overall progress
   const overallProgress = Math.round(
     agents.reduce((sum, a) => sum + a.progress, 0) / agents.length
   );
-
-  // Simulate progress updates
-  useEffect(() => {
-    if (isNewProject) {
-      // Reset agents for new project
-      setAgents(agents.map(a => ({ ...a, status: 'waiting' as AgentStatus, progress: 0, task: '等待任务分配' })));
-    }
-  }, [isNewProject]);
 
   // Auto-scroll logs
   useEffect(() => {
@@ -284,6 +339,23 @@ function ChatContent() {
           </div>
         ))}
         <div ref={messagesEndRef} />
+        
+        {/* Output Files Guidance - P1-3 */}
+        {hasOutputFiles && (
+          <div className="mt-4 p-3 bg-gradient-to-r from-[#FF6B3D]/10 to-[#FF8F6B]/10 rounded-xl border border-[#FF6B3D]/20">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-lg">📁</span>
+              <span className="text-sm font-medium text-[#1A1A2E]">产出文件</span>
+            </div>
+            <p className="text-xs text-gray-600 mb-2">团队正在生成项目文件，点击下方按钮查看进度。</p>
+            <Link 
+              href="/artifacts" 
+              className="inline-flex items-center gap-1 text-xs text-[#FF6B3D] font-medium hover:underline"
+            >
+              查看文件 →
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Input */}

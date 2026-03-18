@@ -43,7 +43,7 @@ Thumbs.db
 next-env.d.ts
 
 # Logs
-logs
+/logs
 *.log
 
 # Testing
