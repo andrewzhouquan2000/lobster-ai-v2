@@ -1,16 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import BottomNav from '@/components/BottomNav';
 
-const projects = [
-  { id: 1, name: '股票分析工具', status: 'active', progress: 75, updated: '2小时前' },
-  { id: 2, name: 'AI 新闻播客', status: 'done', progress: 100, updated: '今天 08:00' },
-  { id: 3, name: '客户线索挖掘', status: 'active', progress: 60, updated: '昨天' },
+interface Project {
+  id: number;
+  name: string;
+  status: 'active' | 'done';
+  progress: number;
+  updated: string;
+  createdAt: number;
+}
+
+const defaultProjects: Project[] = [
+  { id: 1, name: '股票分析工具', status: 'active', progress: 75, updated: '2小时前', createdAt: Date.now() - 7200000 },
+  { id: 2, name: 'AI 新闻播客', status: 'done', progress: 100, updated: '今天 08:00', createdAt: Date.now() - 86400000 },
+  { id: 3, name: '客户线索挖掘', status: 'active', progress: 60, updated: '昨天', createdAt: Date.now() - 172800000 },
 ];
 
 const agents = [
@@ -21,17 +30,71 @@ const agents = [
 
 export default function DashboardPage() {
   const router = useRouter();
+  const [projects, setProjects] = useState<Project[]>([]);
   const [showNewProject, setShowNewProject] = useState(false);
+  const [showEditProject, setShowEditProject] = useState<number | null>(null);
   const [projectName, setProjectName] = useState('');
+  const [editName, setEditName] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
+
+  // Load projects from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('lobster-projects');
+    if (saved) {
+      setProjects(JSON.parse(saved));
+    } else {
+      setProjects(defaultProjects);
+      localStorage.setItem('lobster-projects', JSON.stringify(defaultProjects));
+    }
+  }, []);
+
+  // Save projects to localStorage whenever they change
+  const saveProjects = (newProjects: Project[]) => {
+    setProjects(newProjects);
+    localStorage.setItem('lobster-projects', JSON.stringify(newProjects));
+  };
 
   const handleCreateProject = () => {
     if (projectName.trim()) {
+      // Create new project in localStorage
+      const newProject: Project = {
+        id: Date.now(),
+        name: projectName.trim(),
+        status: 'active',
+        progress: 0,
+        updated: '刚刚',
+        createdAt: Date.now(),
+      };
+      saveProjects([newProject, ...projects]);
       // Navigate to chat with new project
       router.push(`/chat?new=true&name=${encodeURIComponent(projectName.trim())}`);
     } else {
       // Quick create - go directly to chat
       router.push('/chat?new=true');
     }
+  };
+
+  const handleEditProject = (projectId: number) => {
+    const project = projects.find(p => p.id === projectId);
+    if (project && editName.trim()) {
+      const updatedProjects = projects.map(p => 
+        p.id === projectId ? { ...p, name: editName.trim(), updated: '刚刚' } : p
+      );
+      saveProjects(updatedProjects);
+    }
+    setShowEditProject(null);
+    setEditName('');
+  };
+
+  const handleDeleteProject = (projectId: number) => {
+    const updatedProjects = projects.filter(p => p.id !== projectId);
+    saveProjects(updatedProjects);
+    setShowDeleteConfirm(null);
+  };
+
+  const openEditDialog = (project: Project) => {
+    setShowEditProject(project.id);
+    setEditName(project.name);
   };
 
   return (
@@ -95,22 +158,47 @@ export default function DashboardPage() {
       <div className="px-4 mt-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xs font-medium text-gray-400">项目</h2>
-          <span className="text-xs text-[#FF6B3D]">查看全部 →</span>
+          <span className="text-xs text-[#FF6B3D]">共 {projects.length} 个</span>
         </div>
         <div className="space-y-3">
           {projects.map((project) => (
-            <Link key={project.id} href="/chat">
-              <Card className="border border-gray-100 rounded-xl shadow-sm hover:border-[#FF6B3D]/30 transition-colors cursor-pointer">
-                <CardContent className="p-4">
-                  <h3 className="font-medium text-[#1A1A2E] text-sm">{project.name}</h3>
-                  <p className="text-xs text-gray-400 mt-0.5">{project.updated}</p>
-                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-2">
-                    <div className={`h-full rounded-full ${project.progress === 100 ? 'bg-green-400' : 'bg-gradient-to-r from-[#FF6B3D] to-[#FF8F6B]'}`} style={{ width: `${project.progress}%` }} />
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
+            <div key={project.id} className="relative group">
+              <Link href="/chat" className="block">
+                <Card className="border border-gray-100 rounded-xl shadow-sm hover:border-[#FF6B3D]/30 transition-colors cursor-pointer">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-medium text-[#1A1A2E] text-sm">{project.name}</h3>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={(e) => { e.preventDefault(); openEditDialog(project); }}
+                          className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-xs"
+                        >
+                          ✏️
+                        </button>
+                        <button 
+                          onClick={(e) => { e.preventDefault(); setShowDeleteConfirm(project.id); }}
+                          className="w-7 h-7 rounded-full bg-gray-100 hover:bg-red-100 flex items-center justify-center text-xs"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5">{project.updated}</p>
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-2">
+                      <div className={`h-full rounded-full ${project.progress === 100 ? 'bg-green-400' : 'bg-gradient-to-r from-[#FF6B3D] to-[#FF8F6B]'}`} style={{ width: `${project.progress}%` }} />
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            </div>
           ))}
+          {projects.length === 0 && (
+            <div className="text-center py-8 text-gray-400">
+              <p className="text-3xl mb-2">📁</p>
+              <p className="text-sm">暂无项目</p>
+              <p className="text-xs mt-1">点击上方创建新项目</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -187,6 +275,81 @@ export default function DashboardPage() {
                 创建并开始
               </button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Project Dialog */}
+      <Dialog open={showEditProject !== null} onOpenChange={() => setShowEditProject(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="text-xl">✏️</span>
+              重命名项目
+            </DialogTitle>
+            <DialogDescription>
+              修改项目名称
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">项目名称</label>
+              <input 
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="输入新名称"
+                className="w-full h-10 text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 focus:outline-none focus:border-[#FF6B3D] focus:ring-1 focus:ring-[#FF6B3D]"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && showEditProject !== null) {
+                    handleEditProject(showEditProject);
+                  }
+                }}
+              />
+            </div>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => { setShowEditProject(null); setEditName(''); }}
+                className="flex-1 h-10 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button 
+                onClick={() => showEditProject !== null && handleEditProject(showEditProject)}
+                className="flex-1 h-10 text-sm text-white bg-gradient-to-r from-[#FF6B3D] to-[#FF8F6B] rounded-lg hover:opacity-90 transition-opacity font-medium"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirm Dialog */}
+      <Dialog open={showDeleteConfirm !== null} onOpenChange={() => setShowDeleteConfirm(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="text-xl">🗑️</span>
+              删除项目
+            </DialogTitle>
+            <DialogDescription>
+              确定要删除这个项目吗？此操作无法撤销。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3 mt-4">
+            <button 
+              onClick={() => setShowDeleteConfirm(null)}
+              className="flex-1 h-10 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              取消
+            </button>
+            <button 
+              onClick={() => showDeleteConfirm !== null && handleDeleteProject(showDeleteConfirm)}
+              className="flex-1 h-10 text-sm text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors font-medium"
+            >
+              删除
+            </button>
           </div>
         </DialogContent>
       </Dialog>

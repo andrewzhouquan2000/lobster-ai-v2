@@ -93,6 +93,9 @@ function ChatContent() {
   const isExecutionPaused = useRef(false);
   const executionStateRef = useRef<ExecutionState | null>(null);
 
+  // Storage key for messages
+  const storageKey = `lobster-messages-${projectName}`;
+
   // Check if first visit - show welcome guide
   useEffect(() => {
     const hasSeenWelcome = localStorage.getItem('lobster-hasSeenWelcome');
@@ -101,6 +104,30 @@ function ChatContent() {
       localStorage.setItem('lobster-hasSeenWelcome', 'true');
     }
   }, [isNewProject]);
+
+  // Load messages from localStorage on mount
+  useEffect(() => {
+    if (!isNewProject) {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setMessages(parsed);
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+    }
+  }, [storageKey, isNewProject]);
+
+  // Save messages to localStorage whenever they change
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem(storageKey, JSON.stringify(messages));
+    }
+  }, [messages, storageKey]);
 
   // Get current time in HH:mm format
   const getCurrentTime = useCallback(() => {
@@ -336,21 +363,23 @@ function ChatContent() {
     agents.reduce((sum, a) => sum + a.progress, 0) / agents.length
   );
 
-  // Get overall progress description
+  // Get overall progress description with step info
   const getProgressDescription = useCallback(() => {
     const runningAgent = agents.find(a => a.status === 'running');
     const pausedAgent = agents.find(a => a.status === 'paused');
+    const completedCount = agents.filter(a => a.status === 'completed').length;
+    const totalAgents = agents.length;
     
     if (taskControl.isPaused && pausedAgent) {
-      return `${pausedAgent.name}：已暂停`;
+      return `步骤 ${completedCount + 1}/${totalAgents} · ${pausedAgent.name}：已暂停`;
     }
     
     if (runningAgent) {
-      return `${runningAgent.name}：${runningAgent.task}`;
+      return `步骤 ${completedCount + 1}/${totalAgents} · ${runningAgent.name}：${runningAgent.task}`;
     }
     
     if (agents.every(a => a.status === 'completed')) {
-      return '全部任务已完成';
+      return '✅ 全部任务已完成';
     }
     
     if (agents.every(a => a.status === 'waiting')) {
@@ -358,7 +387,7 @@ function ChatContent() {
     }
     
     if (taskControl.isCancelled) {
-      return '任务已取消';
+      return '❌ 任务已取消';
     }
     
     return '准备中...';
