@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import BottomNav from '@/components/BottomNav';
@@ -35,6 +35,17 @@ const initialTeamMembers: TeamMember[] = [
 
 const STORAGE_KEY = 'lobster-team-members';
 
+// 飞行动画状态
+interface FlyingAgent {
+  id: string;
+  name: string;
+  avatar: string;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+}
+
 export default function AgentsPage() {
   const [teamList, setTeamList] = useState<TeamMember[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -42,6 +53,10 @@ export default function AgentsPage() {
   const [viewMode, setViewMode] = useState<'team' | 'market'>('market');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
   const [animatingMemberId, setAnimatingMemberId] = useState<string | null>(null);
+  const [flyingAgent, setFlyingAgent] = useState<FlyingAgent | null>(null);
+  
+  // Tab 引用，用于获取目标位置
+  const teamTabRef = useRef<HTMLButtonElement>(null);
 
   // 从 localStorage 加载团队成员
   useEffect(() => {
@@ -85,28 +100,61 @@ export default function AgentsPage() {
   // 检查 Agent 是否已在团队中
   const isInTeam = (agentId: string) => teamList.some(m => m.id === agentId);
 
-  // 添加 Agent 到团队
-  const handleAddAgent = (agent: Agent) => {
+  // 添加 Agent 到团队（带飞行动画）
+  const handleAddAgent = (agent: Agent, event: React.MouseEvent<HTMLButtonElement>) => {
     if (isInTeam(agent.id)) {
       showToast('该 Agent 已在团队中', 'info');
       return;
     }
     
-    const newMember: TeamMember = {
+    // 获取起点位置（点击的按钮）
+    const button = event.currentTarget;
+    const buttonRect = button.getBoundingClientRect();
+    const startX = buttonRect.left + buttonRect.width / 2;
+    const startY = buttonRect.top + buttonRect.height / 2;
+    
+    // 获取终点位置（"我的团队" Tab）
+    const endX = teamTabRef.current 
+      ? teamTabRef.current.getBoundingClientRect().left + teamTabRef.current.getBoundingClientRect().width / 2
+      : window.innerWidth / 2;
+    const endY = teamTabRef.current
+      ? teamTabRef.current.getBoundingClientRect().top + teamTabRef.current.getBoundingClientRect().height / 2
+      : 100;
+    
+    // 启动飞行动画
+    setFlyingAgent({
       id: agent.id,
       name: agent.name,
-      role: agent.description,
-      status: 'online',
       avatar: agent.avatar,
-      skills: agent.skills,
-      active: true,
-      addedAt: Date.now(),
-    };
+      startX,
+      startY,
+      endX,
+      endY,
+    });
     
-    setTeamList(prev => [...prev, newMember]);
-    setAnimatingMemberId(agent.id);
-    setTimeout(() => setAnimatingMemberId(null), 600);
-    showToast(`已添加 ${agent.name} 到团队`, 'success');
+    // 动画结束后添加到团队
+    setTimeout(() => {
+      const newMember: TeamMember = {
+        id: agent.id,
+        name: agent.name,
+        role: agent.description,
+        status: 'online',
+        avatar: agent.avatar,
+        skills: agent.skills,
+        active: true,
+        addedAt: Date.now(),
+      };
+      
+      setTeamList(prev => [...prev, newMember]);
+      setAnimatingMemberId(agent.id);
+      setTimeout(() => setAnimatingMemberId(null), 600);
+      showToast(`已添加 ${agent.name} 到团队`, 'success');
+    }, 500); // 动画时长 500ms
+    
+    // 清除飞行元素
+    setTimeout(() => {
+      setFlyingAgent(null);
+    }, 600);
   };
 
   // 批量添加模板中的 Agent
@@ -187,6 +235,7 @@ export default function AgentsPage() {
       <div className="bg-white border-b border-gray-100 px-4 py-2 sticky top-0 z-40">
         <div className="flex bg-gray-100 rounded-lg p-0.5">
           <button
+            ref={teamTabRef}
             onClick={() => setViewMode('team')}
             className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
               viewMode === 'team' ? 'bg-white text-[#FF6B3D] shadow-sm' : 'text-gray-500'
@@ -389,7 +438,7 @@ export default function AgentsPage() {
                   key={agent.id}
                   agent={agent}
                   isInTeam={isInTeam(agent.id)}
-                  onAdd={() => handleAddAgent(agent)}
+                  onAdd={(e) => handleAddAgent(agent, e)}
                 />
               ))}
             </div>
@@ -405,6 +454,47 @@ export default function AgentsPage() {
       )}
 
       <BottomNav />
+
+      {/* 飞行 Agent 动画 */}
+      {flyingAgent && (
+        <div
+          className="fixed z-[100] pointer-events-none"
+          style={{
+            left: flyingAgent.startX,
+            top: flyingAgent.startY,
+            transform: 'translate(-50%, -50%)',
+            animation: `flyAnimation 0.5s ease-in-out forwards`,
+            ['--tx' as string]: `${flyingAgent.endX - flyingAgent.startX}px`,
+            ['--ty' as string]: `${flyingAgent.endY - flyingAgent.startY}px`,
+          }}
+        >
+          <style>{`
+            @keyframes flyAnimation {
+              0% {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 1;
+              }
+              60% {
+                transform: translate(
+                  calc(-50% + var(--tx) * 0.3),
+                  calc(-50% + var(--ty) * 0.3 - 40px)
+                ) scale(1.2);
+                opacity: 1;
+              }
+              100% {
+                transform: translate(
+                  calc(-50% + var(--tx)),
+                  calc(-50% + var(--ty))
+                ) scale(0.3);
+                opacity: 0;
+              }
+            }
+          `}</style>
+          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#FF6B3D] to-[#FF8F6B] flex items-center justify-center text-xl shadow-xl border-2 border-white">
+            {flyingAgent.avatar}
+          </div>
+        </div>
+      )}
 
       {/* Toast 提示 */}
       {toast && (
@@ -428,7 +518,7 @@ function AgentCard({
 }: { 
   agent: Agent; 
   isInTeam: boolean; 
-  onAdd: () => void;
+  onAdd: (event: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <div className="bg-white rounded-xl p-3 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
@@ -447,7 +537,7 @@ function AgentCard({
           <div className="flex items-center justify-between">
             <h3 className="font-medium text-[#1A1A2E] text-xs truncate">{agent.name}</h3>
             <button
-              onClick={onAdd}
+              onClick={(e) => onAdd(e)}
               disabled={isInTeam}
               className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
                 isInTeam 
