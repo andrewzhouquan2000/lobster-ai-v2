@@ -103,8 +103,12 @@ function ChatContent() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
   
+  // P1-1: Scroll state for mini agent status bar
+  const [isScrolled, setIsScrolled] = useState(false);
+  
   const logContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const timeoutRefs = useRef<NodeJS.Timeout[]>([]);
   
   // Flag to check if task was paused mid-execution (not completed)
@@ -136,6 +140,11 @@ function ChatContent() {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setMessages(parsed);
+            // P1-3: Restore hasOutputFiles state from persisted messages
+            const hasLink = parsed.some((msg: Message) => msg.hasLink && msg.linkUrl);
+            if (hasLink) {
+              setHasOutputFiles(true);
+            }
           }
         } catch (e) {
           // Ignore parse errors
@@ -143,6 +152,21 @@ function ChatContent() {
       }
     }
   }, [storageKey, isNewProject]);
+  
+  // P1-1: Scroll detection for mini status bar
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    
+    const handleScroll = () => {
+      const scrollTop = container.scrollTop;
+      // Show mini bar when scrolled down more than 50px (past the agent cards)
+      setIsScrolled(scrollTop > 50);
+    };
+    
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // Save messages to localStorage whenever they change
   useEffect(() => {
@@ -582,6 +606,33 @@ function ChatContent() {
         )}
       </div>
 
+      {/* P1-1: Mini Agent Status Bar - Shows when scrolled */}
+      {isScrolled && showProgressPanel && (
+        <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm border-b border-gray-100 px-4 py-2">
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+            {agents.map((agent) => (
+              <div 
+                key={agent.id}
+                className="flex items-center gap-1.5 shrink-0"
+              >
+                <div className="relative">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-base ${
+                    agent.status === 'running' ? 'bg-blue-100' :
+                    agent.status === 'completed' ? 'bg-green-100' :
+                    agent.status === 'paused' ? 'bg-yellow-100' :
+                    agent.status === 'cancelled' ? 'bg-red-100' :
+                    'bg-gray-100'
+                  }`}>
+                    {agent.avatar}
+                  </div>
+                  <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${getStatusColor(agent.status)}`} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Agent Status Panel - Collapsible */}
       {showProgressPanel && (
         <div className="bg-white px-4 py-3 border-b border-gray-100">
@@ -676,7 +727,7 @@ function ChatContent() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-auto p-4 space-y-4 pb-24">
+      <div ref={messagesContainerRef} className="flex-1 overflow-auto p-4 space-y-4 pb-36">
         {isNewProject && messages.length === 0 && (
           <div className="text-center text-gray-400 py-8">
             <p className="text-4xl mb-3">🦞</p>
@@ -733,7 +784,7 @@ function ChatContent() {
         ))}
         <div ref={messagesEndRef} />
         
-        {/* Output Files Guidance - P1-3 */}
+        {/* Output Files Guidance - P1-2: Fixed layout overlap */}
         {hasOutputFiles && (
           <div className="mt-4 p-3 bg-gradient-to-r from-[#FF6B3D]/10 to-[#FF8F6B]/10 rounded-xl border border-[#FF6B3D]/20">
             <div className="flex items-center gap-2 mb-2">
