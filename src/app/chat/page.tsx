@@ -14,6 +14,20 @@ interface Message {
   content: string;
   time: string;
   isUser?: boolean;
+  hasLink?: boolean;
+  linkUrl?: string;
+  linkTitle?: string;
+}
+
+// Generated content result
+interface GeneratedContent {
+  type: string;
+  topic: string;
+  style: string;
+  content: string;
+  docUrl: string;
+  message: string;
+  note?: string;
 }
 
 // Agent status type
@@ -81,6 +95,14 @@ function ChatContent() {
   const [taskControl, setTaskControl] = useState<TaskControlState>({ isPaused: false, isCancelled: false });
   const [executionState, setExecutionState] = useState<ExecutionState | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
+  
+  // V3: Content generation states
+  const [showContentDialog, setShowContentDialog] = useState(false);
+  const [contentTopic, setContentTopic] = useState('');
+  const [contentStyle, setContentStyle] = useState<'种草' | '攻略' | '测评'>('种草');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
+  
   const logContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const timeoutRefs = useRef<NodeJS.Timeout[]>([]);
@@ -357,6 +379,50 @@ function ChatContent() {
     // Start execution from step 0
     executeAgentResponses(0, msgContent);
   };
+
+  // V3: Handle content generation (Xiaohongshu)
+  const handleGenerateContent = useCallback(async () => {
+    if (!contentTopic.trim()) return;
+    
+    setIsGenerating(true);
+    addLog('Designer', '正在生成小红书内容...', 'running');
+    
+    try {
+      const response = await fetch('/api/content/xiaohongshu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: contentTopic, style: contentStyle }),
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setGeneratedContent(result);
+        addLog('Designer', '小红书内容生成完成', 'success');
+        
+        // Add a message with the result link
+        const resultMessage: Message = {
+          id: Date.now(),
+          agent: 'Designer',
+          avatar: '🎨',
+          content: `✅ ${result.message}\n\n📋 **主题**：${result.topic}\n📝 **风格**：${result.style}\n\n📄 **内容预览**：\n${result.content.substring(0, 150)}...`,
+          time: getCurrentTime(),
+          hasLink: true,
+          linkUrl: result.docUrl,
+          linkTitle: `查看完整文档`,
+        };
+        setMessages(prev => [...prev, resultMessage]);
+        setHasOutputFiles(true);
+      } else {
+        addLog('System', '内容生成失败', 'info');
+      }
+    } catch (error) {
+      console.error('Failed to generate content:', error);
+      addLog('System', '内容生成请求失败', 'info');
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [contentTopic, contentStyle, addLog, getCurrentTime]);
 
   // Calculate overall progress
   const overallProgress = Math.round(
@@ -638,6 +704,29 @@ function ChatContent() {
                   <p className="whitespace-pre-wrap">{msg.content}</p>
                 </div>
                 <p className={`text-[10px] text-gray-300 mt-1 ${msg.isUser ? 'mr-1' : 'ml-1'}`}>{msg.time}</p>
+                
+                {/* V3: Display link for generated content */}
+                {msg.hasLink && msg.linkUrl && (
+                  <div className="mt-2 ml-1 p-2 bg-gradient-to-r from-[#FF6B3D]/10 to-[#FF8F6B]/10 rounded-lg border border-[#FF6B3D]/20">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">📄</span>
+                      <div className="flex-1">
+                        <p className="text-xs font-medium text-[#1A1A2E]">✅ 任务完成</p>
+                        <a 
+                          href={msg.linkUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-[#FF6B3D] font-medium hover:underline"
+                        >
+                          {msg.linkTitle || '查看结果'} →
+                        </a>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-gray-500 mt-1">
+                      💡 最佳查看方式：在浏览器中打开，支持完整格式
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -667,6 +756,12 @@ function ChatContent() {
         {/* Quick Tips - 快捷操作提示 */}
         {isNewProject && messages.length === 0 && (
           <div className="flex gap-2 mb-2 overflow-x-auto pb-1 scrollbar-hide">
+            <button 
+              onClick={() => setShowContentDialog(true)}
+              className="shrink-0 px-3 py-1.5 text-xs bg-pink-50 text-pink-500 rounded-full hover:bg-pink-100 transition-colors"
+            >
+              📕 小红书内容
+            </button>
             <button 
               onClick={() => setInput('帮我创建一个网站')}
               className="shrink-0 px-3 py-1.5 text-xs bg-orange-50 text-[#FF6B3D] rounded-full hover:bg-orange-100 transition-colors"
@@ -795,6 +890,151 @@ function ChatContent() {
               className="w-full h-11 bg-gradient-to-r from-[#FF6B3D] to-[#FF8F6B] text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
             >
               开始使用
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* V3: Content Generation Dialog - 小红书内容生成 */}
+      {showContentDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl">
+            <div className="text-center mb-4">
+              <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-pink-400 to-pink-500 flex items-center justify-center text-3xl mb-3">
+                📕
+              </div>
+              <h2 className="text-lg font-bold text-[#1A1A2E]">生成小红书内容</h2>
+              <p className="text-sm text-gray-500 mt-1">AI 自动生成图文内容并上传飞书</p>
+            </div>
+            
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1.5 block">主题</label>
+                <input 
+                  type="text"
+                  value={contentTopic}
+                  onChange={(e) => setContentTopic(e.target.value)}
+                  placeholder="例如：护肤品、旅行攻略、数码产品..."
+                  className="w-full h-10 text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 focus:outline-none focus:ring-2 focus:ring-pink-300"
+                />
+              </div>
+              
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1.5 block">风格</label>
+                <div className="flex gap-2">
+                  {(['种草', '攻略', '测评'] as const).map((style) => (
+                    <button
+                      key={style}
+                      onClick={() => setContentStyle(style)}
+                      className={`flex-1 py-2 text-xs rounded-xl transition-all ${
+                        contentStyle === style 
+                          ? 'bg-gradient-to-r from-pink-400 to-pink-500 text-white' 
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {style}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-r from-pink-50 to-orange-50 rounded-xl p-3 mb-4">
+              <p className="text-xs text-gray-600">
+                💡 <strong>功能说明：</strong>生成的小红书内容将自动上传到飞书文档，你可以直接复制发布。
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <button 
+                onClick={() => {
+                  setShowContentDialog(false);
+                  setContentTopic('');
+                  setGeneratedContent(null);
+                }}
+                className="flex-1 h-11 bg-gray-100 text-gray-600 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button 
+                onClick={() => {
+                  if (contentTopic.trim()) {
+                    handleGenerateContent();
+                    setShowContentDialog(false);
+                  }
+                }}
+                disabled={!contentTopic.trim() || isGenerating}
+                className={`flex-1 h-11 rounded-xl font-medium transition-all ${
+                  contentTopic.trim() && !isGenerating
+                    ? 'bg-gradient-to-r from-pink-400 to-pink-500 text-white hover:opacity-90' 
+                    : 'bg-gray-200 text-gray-400'
+                }`}
+              >
+                {isGenerating ? '生成中...' : '开始生成'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* V3: Generated Content Result Modal */}
+      {generatedContent && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl max-h-[80vh] overflow-y-auto">
+            <div className="text-center mb-4">
+              <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-green-400 to-green-500 flex items-center justify-center text-3xl mb-3">
+                ✅
+              </div>
+              <h2 className="text-lg font-bold text-[#1A1A2E]">内容生成完成！</h2>
+              <p className="text-sm text-gray-500 mt-1">已自动上传到飞书文档</p>
+            </div>
+            
+            <div className="space-y-3 mb-4">
+              <div className="p-3 bg-gray-50 rounded-xl">
+                <p className="text-xs text-gray-500">主题</p>
+                <p className="text-sm font-medium">{generatedContent.topic}</p>
+              </div>
+              <div className="p-3 bg-gray-50 rounded-xl">
+                <p className="text-xs text-gray-500">风格</p>
+                <p className="text-sm font-medium">{generatedContent.style}</p>
+              </div>
+              <div className="p-3 bg-gray-50 rounded-xl">
+                <p className="text-xs text-gray-500">内容预览</p>
+                <p className="text-xs text-gray-700 line-clamp-4">{generatedContent.content.substring(0, 200)}...</p>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-r from-[#FF6B3D]/10 to-[#FF8F6B]/10 rounded-xl p-4 mb-4">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">📄</span>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-[#1A1A2E]">查看结果</p>
+                  <a 
+                    href={generatedContent.docUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-[#FF6B3D] font-medium hover:underline"
+                  >
+                    打开飞书文档 →
+                  </a>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                💡 最佳查看方式：在浏览器中打开，支持完整格式
+              </p>
+            </div>
+
+            {generatedContent.note && (
+              <div className="bg-yellow-50 rounded-xl p-3 mb-4">
+                <p className="text-xs text-yellow-700">{generatedContent.note}</p>
+              </div>
+            )}
+
+            <button 
+              onClick={() => setGeneratedContent(null)}
+              className="w-full h-11 bg-gradient-to-r from-[#FF6B3D] to-[#FF8F6B] text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
+            >
+              完成
             </button>
           </div>
         </div>
