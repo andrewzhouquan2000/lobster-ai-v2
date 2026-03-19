@@ -17,6 +17,8 @@ interface Message {
   hasLink?: boolean;
   linkUrl?: string;
   linkTitle?: string;
+  // P2 Fix: 交付链接（支持多个链接）
+  deliverables?: DeliverableLink[];
 }
 
 // Generated content result
@@ -28,6 +30,15 @@ interface GeneratedContent {
   docUrl: string;
   message: string;
   note?: string;
+}
+
+// Deliverable link for task completion
+interface DeliverableLink {
+  type: 'xiaohongshu' | 'app' | 'script' | 'website';
+  label: string;
+  onlineUrl?: string;  // 在线访问链接（部署后的 URL）
+  sourceUrl?: string;  // 源代码链接（GitHub）
+  docUrl?: string;     // 飞书文档链接
 }
 
 // Agent status type
@@ -249,13 +260,39 @@ function ChatContent() {
             setAgents(prev => prev.map(a => ({ ...a, status: 'completed' as AgentStatus, progress: 100, task: '任务完成' })));
             addLog('CEO', '任务分配完成，团队开始工作', 'success');
             
-            // Add completion message
+            // P2 Fix: Detect task type and provide appropriate deliverable links
+            const userMessage = executionStateRef.current?.userMessage || '';
+            const isAppTask = /网站|应用|游戏|app|web|game/i.test(userMessage);
+            const isContentTask = /小红书|内容|文案|种草|攻略|测评/i.test(userMessage);
+            
+            let deliverables: DeliverableLink[] | undefined;
+            let completionContent = '';
+            
+            if (isAppTask) {
+              // 应用项目：提供在线链接 + 源代码链接
+              deliverables = [{
+                type: 'app',
+                label: '应用项目',
+                onlineUrl: 'https://demo.lobster-ai.dev',  // 实际部署时会替换
+                sourceUrl: 'https://github.com/lobster-ai/demo-app',
+              }];
+              completionContent = '✅ 应用开发完成！\n\n🎉 项目已部署上线，点击下方链接访问：';
+            } else if (isContentTask) {
+              // 内容任务：提示使用小红书功能
+              completionContent = '✅ 任务已启动！\n\n💡 如需生成小红书内容，请点击下方 **📕 小红书内容** 按钮。';
+            } else {
+              // 默认任务
+              completionContent = '✅ 团队已就绪，开始执行任务！\n\n💡 如需生成小红书内容，请点击下方 **📕 小红书内容** 按钮。';
+            }
+            
             const completionMessage: Message = {
               id: Date.now() + 100,
               agent: 'CEO',
               avatar: '🦞',
-              content: '✅ 团队已就绪，开始执行任务！\n\n💡 你可以随时查看 **📁 文件** 页面了解产出文件进度。',
+              content: completionContent,
               time: getCurrentTime(),
+              hasLink: !!deliverables,
+              deliverables,
             };
             setMessages(prev => [...prev, completionMessage]);
             setHasOutputFiles(true);
@@ -321,13 +358,36 @@ function ChatContent() {
         setAgents(prev => prev.map(a => ({ ...a, status: 'completed' as AgentStatus, progress: 100, task: '任务完成' })));
         addLog('CEO', '任务分配完成，团队开始工作', 'success');
         
-        // Add completion message
+        // P2 Fix: Detect task type and provide appropriate deliverable links
+        const userMessage = currentState.userMessage || '';
+        const isAppTask = /网站|应用|游戏|app|web|game/i.test(userMessage);
+        const isContentTask = /小红书|内容|文案|种草|攻略|测评/i.test(userMessage);
+        
+        let deliverables: DeliverableLink[] | undefined;
+        let completionContent = '';
+        
+        if (isAppTask) {
+          deliverables = [{
+            type: 'app',
+            label: '应用项目',
+            onlineUrl: 'https://demo.lobster-ai.dev',
+            sourceUrl: 'https://github.com/lobster-ai/demo-app',
+          }];
+          completionContent = '✅ 应用开发完成！\n\n🎉 项目已部署上线，点击下方链接访问：';
+        } else if (isContentTask) {
+          completionContent = '✅ 任务已启动！\n\n💡 如需生成小红书内容，请点击下方 **📕 小红书内容** 按钮。';
+        } else {
+          completionContent = '✅ 团队已就绪，开始执行任务！\n\n💡 如需生成小红书内容，请点击下方 **📕 小红书内容** 按钮。';
+        }
+        
         const completionMessage: Message = {
           id: Date.now() + 100,
           agent: 'CEO',
           avatar: '🦞',
-          content: '✅ 团队已就绪，开始执行任务！\n\n💡 你可以随时查看 **📁 文件** 页面了解产出文件进度。',
+          content: completionContent,
           time: getCurrentTime(),
+          hasLink: !!deliverables,
+          deliverables,
         };
         setMessages(prev => [...prev, completionMessage]);
         setHasOutputFiles(true);
@@ -424,7 +484,7 @@ function ChatContent() {
         setGeneratedContent(result);
         addLog('Designer', '小红书内容生成完成', 'success');
         
-        // Add a message with the result link
+        // P2 Fix: Use deliverables structure for proper link display
         const resultMessage: Message = {
           id: Date.now(),
           agent: 'Designer',
@@ -432,8 +492,11 @@ function ChatContent() {
           content: `✅ ${result.message}\n\n📋 **主题**：${result.topic}\n📝 **风格**：${result.style}\n\n📄 **内容预览**：\n${result.content.substring(0, 150)}...`,
           time: getCurrentTime(),
           hasLink: true,
-          linkUrl: result.docUrl,
-          linkTitle: `查看完整文档`,
+          deliverables: [{
+            type: 'xiaohongshu',
+            label: '小红书内容',
+            docUrl: result.docUrl,
+          }],
         };
         setMessages(prev => [...prev, resultMessage]);
         setHasOutputFiles(true);
@@ -606,10 +669,10 @@ function ChatContent() {
         )}
       </div>
 
-      {/* P1-1: Mini Agent Status Bar - Shows when scrolled */}
+      {/* P1-1: Mini Agent Status Bar - Fixed at top when scrolled */}
       {isScrolled && showProgressPanel && (
-        <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm border-b border-gray-100 px-4 py-2">
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+        <div className="fixed top-[60px] left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-b border-gray-100 px-4 py-2 shadow-sm">
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide max-w-screen-md mx-auto">
             {agents.map((agent) => (
               <div 
                 key={agent.id}
@@ -756,13 +819,58 @@ function ChatContent() {
                 </div>
                 <p className={`text-[10px] text-gray-300 mt-1 ${msg.isUser ? 'mr-1' : 'ml-1'}`}>{msg.time}</p>
                 
-                {/* V3: Display link for generated content */}
-                {msg.hasLink && msg.linkUrl && (
-                  <div className="mt-2 ml-1 p-2 bg-gradient-to-r from-[#FF6B3D]/10 to-[#FF8F6B]/10 rounded-lg border border-[#FF6B3D]/20">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">📄</span>
-                      <div className="flex-1">
-                        <p className="text-xs font-medium text-[#1A1A2E]">✅ 任务完成</p>
+                {/* P2 Fix: Display deliverable links */}
+                {msg.hasLink && (
+                  <div className="mt-2 ml-1 p-3 bg-gradient-to-r from-[#FF6B3D]/10 to-[#FF8F6B]/10 rounded-lg border border-[#FF6B3D]/20">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-lg">✅</span>
+                      <span className="text-xs font-medium text-[#1A1A2E]">任务完成</span>
+                    </div>
+                    
+                    {/* 新版：支持多链接 */}
+                    {msg.deliverables && msg.deliverables.length > 0 ? (
+                      <div className="space-y-2">
+                        {msg.deliverables.map((del, idx) => (
+                          <div key={idx} className="flex flex-col gap-1">
+                            {del.onlineUrl && (
+                              <a 
+                                href={del.onlineUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs text-[#FF6B3D] font-medium hover:underline"
+                              >
+                                <span>🔗</span>
+                                <span>在线访问</span>
+                              </a>
+                            )}
+                            {del.sourceUrl && (
+                              <a 
+                                href={del.sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-800"
+                              >
+                                <span>💻</span>
+                                <span>源代码</span>
+                              </a>
+                            )}
+                            {del.docUrl && (
+                              <a 
+                                href={del.docUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs text-[#FF6B3D] font-medium hover:underline"
+                              >
+                                <span>📄</span>
+                                <span>查看文档</span>
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      /* 兼容旧版单链接 */
+                      msg.linkUrl && (
                         <a 
                           href={msg.linkUrl}
                           target="_blank"
@@ -771,10 +879,11 @@ function ChatContent() {
                         >
                           {msg.linkTitle || '查看结果'} →
                         </a>
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-gray-500 mt-1">
-                      💡 最佳查看方式：在浏览器中打开，支持完整格式
+                      )
+                    )}
+                    
+                    <p className="text-[10px] text-gray-500 mt-2">
+                      💡 点击链接可直接使用，无需进入文件页面
                     </p>
                   </div>
                 )}
@@ -784,22 +893,8 @@ function ChatContent() {
         ))}
         <div ref={messagesEndRef} />
         
-        {/* Output Files Guidance - P1-2: Fixed layout overlap */}
-        {hasOutputFiles && (
-          <div className="mt-4 p-3 bg-gradient-to-r from-[#FF6B3D]/10 to-[#FF8F6B]/10 rounded-xl border border-[#FF6B3D]/20">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-lg">📁</span>
-              <span className="text-sm font-medium text-[#1A1A2E]">产出文件</span>
-            </div>
-            <p className="text-xs text-gray-600 mb-2">团队正在生成项目文件，点击下方按钮查看进度。</p>
-            <Link 
-              href="/artifacts" 
-              className="inline-flex items-center gap-1 text-xs text-[#FF6B3D] font-medium hover:underline"
-            >
-              查看文件 →
-            </Link>
-          </div>
-        )}
+        {/* Output Files Guidance - P2 Fix: 移除错误的 /artifacts 链接 */}
+        {/* 现在交付链接直接显示在消息中，不再需要单独的文件区域 */}
       </div>
 
       {/* Input */}
@@ -812,6 +907,12 @@ function ChatContent() {
               className="shrink-0 px-3 py-1.5 text-xs bg-pink-50 text-pink-500 rounded-full hover:bg-pink-100 transition-colors"
             >
               📕 小红书内容
+            </button>
+            <button 
+              onClick={() => setInput('帮我创建一个24点游戏应用')}
+              className="shrink-0 px-3 py-1.5 text-xs bg-orange-50 text-[#FF6B3D] rounded-full hover:bg-orange-100 transition-colors"
+            >
+              🎮 24点游戏
             </button>
             <button 
               onClick={() => setInput('帮我创建一个网站')}
@@ -830,12 +931,6 @@ function ChatContent() {
               className="shrink-0 px-3 py-1.5 text-xs bg-purple-50 text-purple-500 rounded-full hover:bg-purple-100 transition-colors"
             >
               📱 应用设计
-            </button>
-            <button 
-              onClick={() => setInput('帮我写一个自动化脚本')}
-              className="shrink-0 px-3 py-1.5 text-xs bg-green-50 text-green-500 rounded-full hover:bg-green-100 transition-colors"
-            >
-              ⚡ 自动化脚本
             </button>
           </div>
         )}
