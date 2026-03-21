@@ -34,6 +34,24 @@ const getStatusConfig = (status: Project['status']) => {
   }
 };
 
+// Format createdAt timestamp to readable date
+const formatCreatedAt = (timestamp: number) => {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) {
+    return '今天 ' + date.getHours().toString().padStart(2, '0') + ':' + date.getMinutes().toString().padStart(2, '0');
+  } else if (diffDays === 1) {
+    return '昨天';
+  } else if (diffDays < 7) {
+    return `${diffDays}天前`;
+  } else {
+    return `${date.getMonth() + 1}月${date.getDate()}日`;
+  }
+};
+
 const agents = [
   { id: 1, name: 'Coder', avatar: '💻', status: 'online' },
   { id: 2, name: 'DevOps', avatar: '⚙️', status: 'busy' },
@@ -208,7 +226,11 @@ export default function DashboardPage() {
                         </button>
                       </div>
                     </div>
-                    <p className="text-xs text-gray-400 mt-0.5">{project.updated}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className="text-xs text-gray-400">{project.updated}</p>
+                      <span className="text-xs text-gray-300">•</span>
+                      <p className="text-xs text-gray-400">创建于 {formatCreatedAt(project.createdAt)}</p>
+                    </div>
                     <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-2">
                       <div className={`h-full rounded-full ${project.progress === 100 ? 'bg-green-400' : project.status === 'paused' ? 'bg-yellow-400' : 'bg-gradient-to-r from-[#FF6B3D] to-[#FF8F6B]'}`} style={{ width: `${project.progress}%` }} />
                     </div>
