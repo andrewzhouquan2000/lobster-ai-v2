@@ -135,6 +135,9 @@ function ChatContent() {
   // V4: Keyboard shortcuts help panel
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   
+  // V4: Copy message feedback
+  const [copiedMessageId, setCopiedMessageId] = useState<number | null>(null);
+  
   // V4: Stop generation - AbortController for cancelling API requests
   const abortControllerRef = useRef<AbortController | null>(null);
   
@@ -781,6 +784,17 @@ function ChatContent() {
     }
   };
 
+  // V4: Copy message to clipboard
+  const handleCopyMessage = useCallback(async (messageId: number, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy message:', err);
+    }
+  }, []);
+
   // V4: Skeleton loading component
   const MessageSkeleton = () => (
     <div className="flex gap-2 animate-pulse">
@@ -1036,13 +1050,39 @@ function ChatContent() {
                 {!msg.isUser && (
                   <p className="text-xs text-gray-400 mb-1 ml-1">{msg.agent}</p>
                 )}
-                <div className={`rounded-2xl px-3 py-2 text-sm ${
+                <div className={`rounded-2xl px-3 py-2 text-sm relative group ${
                   msg.isUser 
                     ? 'bg-gradient-to-r from-[#FF6B3D] to-[#FF8F6B] text-white rounded-tr-md' 
                     : 'bg-white shadow-sm rounded-tl-md'
                 }`}>
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                  <p className="whitespace-pre-wrap pr-6">{msg.content}</p>
+                  {/* V4: Copy button */}
+                  <button
+                    onClick={() => handleCopyMessage(msg.id, msg.content)}
+                    className={`absolute bottom-1 right-1 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity ${
+                      msg.isUser 
+                        ? 'hover:bg-white/20 text-white/70 hover:text-white' 
+                        : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'
+                    }`}
+                    title="复制消息"
+                  >
+                    {copiedMessageId === msg.id ? (
+                      <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    )}
+                  </button>
                 </div>
+                {/* V4: Copy success tooltip */}
+                {copiedMessageId === msg.id && (
+                  <p className={`text-[10px] text-green-500 mt-1 ${msg.isUser ? 'mr-1 text-right' : 'ml-1'}`}>
+                    ✓ 已复制到剪贴板
+                  </p>
+                )}
                 <p className={`text-[10px] text-gray-300 mt-1 ${msg.isUser ? 'mr-1' : 'ml-1'}`}>{msg.time}</p>
                 
                 {/* P2 Fix: Display deliverable links */}
