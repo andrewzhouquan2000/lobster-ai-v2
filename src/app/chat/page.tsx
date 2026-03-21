@@ -138,6 +138,9 @@ function ChatContent() {
   // V4: Copy message feedback
   const [copiedMessageId, setCopiedMessageId] = useState<number | null>(null);
   
+  // V4: Regenerate message state
+  const [regeneratingMessageId, setRegeneratingMessageId] = useState<number | null>(null);
+  
   // V4: Stop generation - AbortController for cancelling API requests
   const abortControllerRef = useRef<AbortController | null>(null);
   
@@ -795,6 +798,51 @@ function ChatContent() {
     }
   }, []);
 
+  // V4: Regenerate AI message
+  const handleRegenerateMessage = useCallback((messageId: number) => {
+    if (isProcessing || regeneratingMessageId !== null) return;
+    
+    // Find the message to regenerate
+    const messageIndex = messages.findIndex(m => m.id === messageId);
+    if (messageIndex === -1 || messages[messageIndex].isUser) return;
+    
+    setRegeneratingMessageId(messageId);
+    
+    // Determine which agent response to use based on the agent name
+    const msg = messages[messageIndex];
+    const agentKey = msg.agent as 'CEO' | 'Coder' | 'Designer' | 'DevOps';
+    
+    // Find a matching agent response template
+    const matchingResponse = agentResponses.find(r => r.agent === agentKey);
+    if (!matchingResponse) {
+      setRegeneratingMessageId(null);
+      return;
+    }
+    
+    // Simulate regeneration with a slight delay
+    setTimeout(() => {
+      // Generate new content (simulated - in production this would call an API)
+      const variations = [
+        matchingResponse.content,
+        `收到！让我重新分析一下这个需求...\n\n我将从不同角度来处理这个问题，确保给您最佳方案。`,
+        `好的，我来重新处理这个任务。\n\n让我换一个思路来解决问题，提供更优的方案。`,
+        `明白，让我重新规划一下执行策略...\n\n这次我会采用更高效的方式来完成任务。`,
+      ];
+      
+      const newContent = variations[Math.floor(Math.random() * variations.length)];
+      
+      // Update the message with new content
+      setMessages(prev => prev.map(m => 
+        m.id === messageId 
+          ? { ...m, content: newContent, time: getCurrentTime() }
+          : m
+      ));
+      
+      setRegeneratingMessageId(null);
+      addLog(msg.agent, '消息已重新生成', 'success');
+    }, 1500);
+  }, [messages, isProcessing, regeneratingMessageId, getCurrentTime, addLog]);
+
   // V4: Skeleton loading component
   const MessageSkeleton = () => (
     <div className="flex gap-2 animate-pulse">
@@ -1055,27 +1103,54 @@ function ChatContent() {
                     ? 'bg-gradient-to-r from-[#FF6B3D] to-[#FF8F6B] text-white rounded-tr-md' 
                     : 'bg-white shadow-sm rounded-tl-md'
                 }`}>
-                  <p className="whitespace-pre-wrap pr-6">{msg.content}</p>
-                  {/* V4: Copy button */}
-                  <button
-                    onClick={() => handleCopyMessage(msg.id, msg.content)}
-                    className={`absolute bottom-1 right-1 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity ${
-                      msg.isUser 
-                        ? 'hover:bg-white/20 text-white/70 hover:text-white' 
-                        : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'
-                    }`}
-                    title="复制消息"
-                  >
-                    {copiedMessageId === msg.id ? (
-                      <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
+                  <p className="whitespace-pre-wrap pr-12">{msg.content}</p>
+                  {/* V4: Action buttons container */}
+                  <div className="absolute bottom-1 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* V4: Regenerate button - only for AI messages */}
+                    {!msg.isUser && (
+                      <button
+                        onClick={() => handleRegenerateMessage(msg.id)}
+                        disabled={regeneratingMessageId === msg.id}
+                        className={`p-1 rounded transition-colors ${
+                          regeneratingMessageId === msg.id
+                            ? 'text-[#FF6B3D] cursor-wait'
+                            : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'
+                        }`}
+                        title="重新生成"
+                      >
+                        {regeneratingMessageId === msg.id ? (
+                          <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        )}
+                      </button>
                     )}
-                  </button>
+                    {/* V4: Copy button */}
+                    <button
+                      onClick={() => handleCopyMessage(msg.id, msg.content)}
+                      className={`p-1 rounded transition-colors ${
+                        msg.isUser 
+                          ? 'hover:bg-white/20 text-white/70 hover:text-white' 
+                          : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'
+                      }`}
+                      title="复制消息"
+                    >
+                      {copiedMessageId === msg.id ? (
+                        <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                 </div>
                 {/* V4: Copy success tooltip */}
                 {copiedMessageId === msg.id && (
