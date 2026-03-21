@@ -114,6 +114,9 @@ function ChatContent() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
   
+  // V4: Keyboard shortcuts help panel
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  
   // V4: Stop generation - AbortController for cancelling API requests
   const abortControllerRef = useRef<AbortController | null>(null);
   
@@ -666,6 +669,42 @@ function ChatContent() {
     };
   }, []);
 
+  // V4: Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Esc to close dialogs
+      if (e.key === 'Escape') {
+        if (showContentDialog) {
+          setShowContentDialog(false);
+          setContentTopic('');
+          setGeneratedContent(null);
+          e.preventDefault();
+        } else if (generatedContent) {
+          setGeneratedContent(null);
+          e.preventDefault();
+        } else if (showWelcome) {
+          setShowWelcome(false);
+          e.preventDefault();
+        } else if (showShortcutsHelp) {
+          setShowShortcutsHelp(false);
+          e.preventDefault();
+        }
+      }
+      
+      // ? key to show shortcuts help (when not in input)
+      if (e.key === '?' && !showContentDialog && !generatedContent && !showWelcome) {
+        const activeElement = document.activeElement;
+        if (activeElement?.tagName !== 'INPUT' && activeElement?.tagName !== 'TEXTAREA') {
+          setShowShortcutsHelp(true);
+          e.preventDefault();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showContentDialog, generatedContent, showWelcome, showShortcutsHelp]);
+
   const getStatusColor = (status: AgentStatus) => {
     switch (status) {
       case 'running': return 'bg-blue-500 animate-pulse';
@@ -718,6 +757,13 @@ function ChatContent() {
           className={`w-8 h-8 rounded-full flex items-center justify-center text-sm transition-colors ${showProgressPanel ? 'bg-[#FF6B3D]/10 text-[#FF6B3D]' : 'bg-gray-50'}`}
         >
           📊
+        </button>
+        <button 
+          onClick={() => setShowShortcutsHelp(true)}
+          className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-sm hover:bg-gray-100 transition-colors"
+          title="快捷键帮助 (?)"
+        >
+          ⌨️
         </button>
         <button className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-sm">⋯</button>
       </div>
@@ -1064,7 +1110,7 @@ function ChatContent() {
                 // Allow normal paste behavior for multi-line text
                 // The default behavior already handles this correctly
               }}
-              placeholder="描述你的需求，AI 团队将协作完成... (Shift+Enter换行)"
+              placeholder="描述你的需求，AI 团队将协作完成... (Enter发送，Shift+Enter换行)"
               rows={1}
               className="w-full text-sm bg-gray-50 border-0 rounded-2xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#FF6B3D]/20 resize-none min-h-[36px] max-h-[120px] overflow-y-auto"
               style={{ height: 'auto' }}
@@ -1082,8 +1128,8 @@ function ChatContent() {
           <button 
             onClick={handleSendMessage}
             disabled={isProcessing}
-            title={!input.trim() ? '输入内容后发送' : isProcessing ? '发送中...' : '发送消息'}
-            className={`w-9 h-9 rounded-full flex items-center justify-center text-sm transition-all shrink-0 ${
+            title={!input.trim() ? '输入内容后发送' : isProcessing ? '发送中...' : '发送消息 (Enter)'}
+            className={`w-9 h-9 rounded-full flex items-center justify-center text-sm transition-all shrink-0 relative ${
               isProcessing 
                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
                 : input.trim() 
@@ -1091,6 +1137,10 @@ function ChatContent() {
                   : 'bg-gray-100 text-gray-400 hover:bg-gray-150 cursor-not-allowed'
             }`}
           >
+            {/* V4: Shortcut hint badge */}
+            {input.trim() && !isProcessing && (
+              <span className="absolute -top-1 -right-1 text-[8px] bg-white text-gray-500 px-1 rounded shadow-sm border border-gray-100">⏎</span>
+            )}
             {isProcessing ? (
               <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -1167,9 +1217,10 @@ function ChatContent() {
 
             <button 
               onClick={() => setShowWelcome(false)}
-              className="w-full h-11 bg-gradient-to-r from-[#FF6B3D] to-[#FF8F6B] text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
+              className="w-full h-11 bg-gradient-to-r from-[#FF6B3D] to-[#FF8F6B] text-white rounded-xl font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
             >
               开始使用
+              <span className="text-[10px] bg-white/20 text-white px-1.5 py-0.5 rounded">Esc</span>
             </button>
           </div>
         </div>
@@ -1232,9 +1283,10 @@ function ChatContent() {
                   setContentTopic('');
                   setGeneratedContent(null);
                 }}
-                className="flex-1 h-11 bg-gray-100 text-gray-600 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+                className="flex-1 h-11 bg-gray-100 text-gray-600 rounded-xl font-medium hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
               >
                 取消
+                <span className="text-[10px] bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded">Esc</span>
               </button>
               <button 
                 onClick={() => {
@@ -1312,9 +1364,73 @@ function ChatContent() {
 
             <button 
               onClick={() => setGeneratedContent(null)}
-              className="w-full h-11 bg-gradient-to-r from-[#FF6B3D] to-[#FF8F6B] text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
+              className="w-full h-11 bg-gradient-to-r from-[#FF6B3D] to-[#FF8F6B] text-white rounded-xl font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
             >
               完成
+              <span className="text-[10px] bg-white/20 text-white px-1.5 py-0.5 rounded">Esc</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* V4: Keyboard Shortcuts Help Panel */}
+      {showShortcutsHelp && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl">
+            <div className="text-center mb-4">
+              <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-[#FF6B3D] to-[#FF8F6B] flex items-center justify-center text-3xl mb-3">
+                ⌨️
+              </div>
+              <h2 className="text-lg font-bold text-[#1A1A2E]">快捷键</h2>
+              <p className="text-sm text-gray-500 mt-1">使用键盘快速操作</p>
+            </div>
+            
+            <div className="space-y-3 mb-6">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">↵</span>
+                  <span className="text-sm text-[#1A1A2E]">发送消息</span>
+                </div>
+                <span className="text-xs text-gray-400 bg-gray-200 px-2 py-1 rounded">Enter</span>
+              </div>
+              
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">↵</span>
+                  <span className="text-sm text-[#1A1A2E]">换行（不发送）</span>
+                </div>
+                <span className="text-xs text-gray-400 bg-gray-200 px-2 py-1 rounded">Shift+Enter</span>
+              </div>
+              
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">✕</span>
+                  <span className="text-sm text-[#1A1A2E]">关闭对话框</span>
+                </div>
+                <span className="text-xs text-gray-400 bg-gray-200 px-2 py-1 rounded">Esc</span>
+              </div>
+              
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">⌨️</span>
+                  <span className="text-sm text-[#1A1A2E]">显示此帮助</span>
+                </div>
+                <span className="text-xs text-gray-400 bg-gray-200 px-2 py-1 rounded">?</span>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-r from-[#FF6B3D]/10 to-[#FF8F6B]/10 rounded-xl p-3 mb-4">
+              <p className="text-xs text-gray-600">
+                💡 <strong>提示：</strong>在输入框外按 <span className="font-mono bg-gray-200 px-1 rounded">?</span> 可快速打开此帮助面板
+              </p>
+            </div>
+
+            <button 
+              onClick={() => setShowShortcutsHelp(false)}
+              className="w-full h-11 bg-gradient-to-r from-[#FF6B3D] to-[#FF8F6B] text-white rounded-xl font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+            >
+              知道了
+              <span className="text-[10px] bg-white/20 text-white px-1.5 py-0.5 rounded">Esc</span>
             </button>
           </div>
         </div>
