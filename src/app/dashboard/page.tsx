@@ -218,20 +218,14 @@ export default function DashboardPage() {
                         <span className={`text-xs font-bold ${project.progress === 100 ? 'text-green-500' : project.status === 'paused' ? 'text-yellow-500' : 'text-[#FF6B3D]'}`}>
                           {project.progress}%
                         </span>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button 
-                            onClick={(e) => { e.preventDefault(); openEditDialog(project); }}
-                            className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-xs"
-                          >
-                            ✏️
-                          </button>
-                          <button 
-                            onClick={(e) => { e.preventDefault(); setShowDeleteConfirm(project.id); }}
-                            className="w-7 h-7 rounded-full bg-gray-100 hover:bg-red-100 flex items-center justify-center text-xs"
-                          >
-                            🗑️
-                          </button>
-                        </div>
+                        {/* V4: Edit button - always visible for mobile */}
+                        <button 
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEditDialog(project); }}
+                          className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-xs transition-colors"
+                          title="编辑项目"
+                        >
+                          ✏️
+                        </button>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 mt-1">
@@ -402,6 +396,17 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="flex gap-3">
+              <button 
+                onClick={() => { 
+                  if (showEditProject !== null) {
+                    setShowDeleteConfirm(showEditProject);
+                    setShowEditProject(null);
+                  }
+                }}
+                className="h-10 px-4 text-sm text-red-500 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+              >
+                🗑️ 删除
+              </button>
               <button 
                 onClick={() => { setShowEditProject(null); setEditName(''); }}
                 className="flex-1 h-10 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
