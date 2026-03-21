@@ -44,6 +44,24 @@ interface DeliverableLink {
 // Agent status type
 type AgentStatus = 'waiting' | 'running' | 'completed' | 'paused' | 'cancelled';
 
+// V4: Loading progress step definitions
+interface LoadingStep {
+  text: string;
+  subtext: string;
+  estimatedDuration: number; // in milliseconds
+  icon: string;
+}
+
+// V4: Loading progress steps with detailed messages
+const loadingSteps: LoadingStep[] = [
+  { text: '正在分析需求', subtext: '理解您的目标，拆解任务...', estimatedDuration: 2000, icon: '🧠' },
+  { text: '正在规划方案', subtext: '制定执行计划，分配任务...', estimatedDuration: 1500, icon: '📋' },
+  { text: '正在生成代码', subtext: '编写核心逻辑，构建功能...', estimatedDuration: 3000, icon: '💻' },
+  { text: '正在优化界面', subtext: '设计交互流程，美化UI...', estimatedDuration: 2500, icon: '🎨' },
+  { text: '正在准备部署', subtext: '配置环境，检查依赖...', estimatedDuration: 2000, icon: '⚙️' },
+  { text: '正在完成', subtext: '整理交付物，生成文档...', estimatedDuration: 1000, icon: '✅' },
+];
+
 // Task control state
 interface TaskControlState {
   isPaused: boolean;
@@ -122,6 +140,11 @@ function ChatContent() {
   
   // P1-1: Scroll state for mini agent status bar
   const [isScrolled, setIsScrolled] = useState(false);
+  
+  // V4: Enhanced loading state
+  const [currentLoadingStep, setCurrentLoadingStep] = useState(0);
+  const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState(0);
+  const [loadingStartTime, setLoadingStartTime] = useState<number | null>(null);
   
   const logContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -281,6 +304,9 @@ function ChatContent() {
           return;
         }
         
+        // V4: Update loading step
+        setCurrentLoadingStep(Math.min(actualIndex + 1, loadingSteps.length - 1));
+        
         const newMessage: Message = {
           id: Date.now() + actualIndex,
           agent: response.agent,
@@ -295,6 +321,14 @@ function ChatContent() {
         const progress = 20 + actualIndex * 20;
         updateAgentStatus(agentId, 'running', response.taskDesc || '执行任务中...', progress);
         addLog(response.agent, response.content.split('\n')[0].substring(0, 30) + '...', 'running');
+        
+        // V4: Update estimated time remaining
+        if (loadingStartTime) {
+          const elapsed = Date.now() - loadingStartTime;
+          const avgTimePerStep = elapsed / (actualIndex + 1);
+          const remainingSteps = agentResponses.length - actualIndex - 1;
+          setEstimatedTimeRemaining(Math.round(avgTimePerStep * remainingSteps / 1000));
+        }
         
         // Update execution state
         setExecutionState(prev => {
@@ -490,6 +524,10 @@ function ChatContent() {
     isExecutionPaused.current = false;
     setTaskControl({ isPaused: false, isCancelled: false });
     wasPausedMidExecution.current = false;
+    
+    // V4: Initialize loading state
+    setCurrentLoadingStep(0);
+    setLoadingStartTime(Date.now());
     
     const userMessage: Message = {
       id: Date.now(),
@@ -743,6 +781,18 @@ function ChatContent() {
     }
   };
 
+  // V4: Skeleton loading component
+  const MessageSkeleton = () => (
+    <div className="flex gap-2 animate-pulse">
+      <div className="w-8 h-8 rounded-full bg-gray-200 shrink-0" />
+      <div className="flex-1 space-y-2">
+        <div className="h-3 bg-gray-200 rounded w-24" />
+        <div className="h-16 bg-gray-200 rounded-2xl w-full max-w-[80%]" />
+        <div className="h-2 bg-gray-200 rounded w-16" />
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[#F8F9FA] flex flex-col">
       {/* Header */}
@@ -770,6 +820,26 @@ function ChatContent() {
 
       {/* Progress Bar - Always visible */}
       <div className="bg-white px-4 py-2 border-b border-gray-100">
+        {/* V4: Enhanced loading progress text */}
+        {isProcessing && currentLoadingStep < loadingSteps.length && (
+          <div className="mb-2 flex items-center gap-2 bg-gradient-to-r from-[#FF6B3D]/5 to-[#FF8F6B]/5 rounded-lg px-3 py-2">
+            <span className="text-lg">{loadingSteps[currentLoadingStep]?.icon}</span>
+            <div className="flex-1">
+              <p className="text-xs font-medium text-[#1A1A2E]">{loadingSteps[currentLoadingStep]?.text}</p>
+              <p className="text-[10px] text-gray-500">{loadingSteps[currentLoadingStep]?.subtext}</p>
+            </div>
+            {estimatedTimeRemaining > 0 && (
+              <div className="text-right">
+                <p className="text-[10px] text-gray-400">预计剩余</p>
+                <p className="text-xs font-medium text-[#FF6B3D]">
+                  {estimatedTimeRemaining < 60 
+                    ? `${estimatedTimeRemaining}秒` 
+                    : `${Math.ceil(estimatedTimeRemaining / 60)}分钟`}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs text-gray-500">{getProgressDescription()}</span>
           <span className="text-xs font-medium text-[#FF6B3D]">{overallProgress}%</span>
@@ -974,6 +1044,87 @@ function ChatContent() {
                   <p className="whitespace-pre-wrap">{msg.content}</p>
                 </div>
                 <p className={`text-[10px] text-gray-300 mt-1 ${msg.isUser ? 'mr-1' : 'ml-1'}`}>{msg.time}</p>
+                
+                {/* P2 Fix: Display deliverable links */}
+                {msg.hasLink && (
+                  <div className="mt-2 ml-1 p-3 bg-gradient-to-r from-[#FF6B3D]/10 to-[#FF8F6B]/10 rounded-lg border border-[#FF6B3D]/20">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-lg">✅</span>
+                      <span className="text-xs font-medium text-[#1A1A2E]">任务完成</span>
+                    </div>
+                    
+                    {/* 新版：支持多链接 */}
+                    {msg.deliverables && msg.deliverables.length > 0 ? (
+                      <div className="space-y-2">
+                        {msg.deliverables.map((del, idx) => (
+                          <div key={idx} className="flex flex-col gap-1">
+                            {del.onlineUrl && (
+                              <a 
+                                href={del.onlineUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs text-[#FF6B3D] font-medium hover:underline"
+                              >
+                                <span>🔗</span>
+                                <span>在线访问</span>
+                              </a>
+                            )}
+                            {del.sourceUrl && (
+                              <a 
+                                href={del.sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-800"
+                              >
+                                <span>💻</span>
+                                <span>源代码</span>
+                              </a>
+                            )}
+                            {del.docUrl && (
+                              <a 
+                                href={del.docUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs text-[#FF6B3D] font-medium hover:underline"
+                              >
+                                <span>📄</span>
+                                <span>查看文档</span>
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      /* 兼容旧版单链接 */
+                      msg.linkUrl && (
+                        <a 
+                          href={msg.linkUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-[#FF6B3D] font-medium hover:underline"
+                        >
+                          {msg.linkTitle || '查看结果'} →
+                        </a>
+                      )
+                    )}
+                    
+                    <p className="text-[10px] text-gray-500 mt-2">
+                      💡 点击链接可直接使用，无需进入文件页面
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+        
+        {/* V4: Skeleton placeholders when processing */}
+        {isProcessing && messages.length > 0 && (
+          <>
+            <MessageSkeleton />
+            <MessageSkeleton />
+          </>
+        )}
                 
                 {/* P2 Fix: Display deliverable links */}
                 {msg.hasLink && (
