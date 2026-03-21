@@ -114,6 +114,9 @@ function ChatContent() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
   
+  // V4: Stop generation - AbortController for cancelling API requests
+  const abortControllerRef = useRef<AbortController | null>(null);
+  
   // P1-1: Scroll state for mini agent status bar
   const [isScrolled, setIsScrolled] = useState(false);
   
@@ -464,9 +467,48 @@ function ChatContent() {
     executeAgentResponses(0, msgContent);
   };
 
+  // V4: Handle stop generation
+  const handleStopGeneration = useCallback(() => {
+    // Abort any ongoing API request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    
+    // Clear all pending timeouts for agent responses
+    clearAllTimeouts();
+    
+    // Reset processing states
+    setIsGenerating(false);
+    setIsProcessing(false);
+    
+    // Mark current running agents as stopped
+    setAgents(prev => prev.map(a => 
+      a.status === 'running' 
+        ? { ...a, status: 'paused' as AgentStatus, task: '已停止生成' }
+        : a
+    ));
+    
+    // Add log entry
+    addLog('System', '生成已停止', 'info');
+    
+    // Add a message indicating generation was stopped
+    const stopMessage: Message = {
+      id: Date.now(),
+      agent: 'System',
+      avatar: '⏹️',
+      content: '⏹️ 生成已停止，已保存当前内容。',
+      time: getCurrentTime(),
+    };
+    setMessages(prev => [...prev, stopMessage]);
+  }, [clearAllTimeouts, addLog, getCurrentTime]);
+
   // V3: Handle content generation (Xiaohongshu)
   const handleGenerateContent = useCallback(async () => {
     if (!contentTopic.trim()) return;
+    
+    // V4: Create new AbortController for this request
+    abortControllerRef.current = new AbortController();
     
     setIsGenerating(true);
     addLog('Designer', '正在生成小红书内容...', 'running');
@@ -476,6 +518,7 @@ function ChatContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic: contentTopic, style: contentStyle }),
+        signal: abortControllerRef.current.signal, // V4: Add abort signal
       });
       
       const result = await response.json();
@@ -503,11 +546,17 @@ function ChatContent() {
       } else {
         addLog('System', '内容生成失败', 'info');
       }
-    } catch (error) {
-      console.error('Failed to generate content:', error);
-      addLog('System', '内容生成请求失败', 'info');
+    } catch (error: any) {
+      // V4: Handle abort error separately
+      if (error.name === 'AbortError') {
+        addLog('System', '内容生成已取消', 'info');
+      } else {
+        console.error('Failed to generate content:', error);
+        addLog('System', '内容生成请求失败', 'info');
+      }
     } finally {
       setIsGenerating(false);
+      abortControllerRef.current = null;
     }
   }, [contentTopic, contentStyle, addLog, getCurrentTime]);
 
@@ -638,9 +687,18 @@ function ChatContent() {
           />
         </div>
         
-        {/* Task Control Buttons */}
-        {isProcessing && (
-          <div className="flex items-center justify-end gap-2 mt-2">
+        {/* Task Control Buttons - V4: Enhanced with Stop Generation */}
+        {(isProcessing || isGenerating) && (
+          <div className="flex items-center justify-center gap-2 mt-2">
+            <button
+              onClick={handleStopGeneration}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-full hover:bg-red-600 transition-all shadow-sm"
+            >
+              <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+              <span>停止生成</span>
+            </button>
             {taskControl.isPaused ? (
               <button
                 onClick={handleResumeTask}
@@ -660,10 +718,10 @@ function ChatContent() {
             )}
             <button
               onClick={handleCancelTask}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-full hover:bg-red-100 transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
             >
               <span>✕</span>
-              <span>取消</span>
+              <span>取消任务</span>
             </button>
           </div>
         )}
@@ -990,6 +1048,19 @@ function ChatContent() {
               <span>→</span>
             )}
           </button>
+          
+          {/* V4: Stop Generation Button - Show when generating */}
+          {(isProcessing || isGenerating) && (
+            <button
+              onClick={handleStopGeneration}
+              title="停止生成"
+              className="w-9 h-9 rounded-full flex items-center justify-center text-sm bg-red-500 text-white shadow-md hover:bg-red-600 active:scale-95 transition-all shrink-0 animate-pulse"
+            >
+              <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
