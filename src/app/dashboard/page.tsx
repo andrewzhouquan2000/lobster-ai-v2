@@ -14,12 +14,13 @@ interface Project {
   progress: number;
   updated: string;
   createdAt: number;
+  messageCount?: number;  // V4: 消息数量
 }
 
 const defaultProjects: Project[] = [
-  { id: 1, name: '股票分析工具', status: 'active', progress: 75, updated: '2小时前', createdAt: Date.now() - 7200000 },
-  { id: 2, name: 'AI 新闻播客', status: 'done', progress: 100, updated: '今天 08:00', createdAt: Date.now() - 86400000 },
-  { id: 3, name: '客户线索挖掘', status: 'paused', progress: 30, updated: '昨天', createdAt: Date.now() - 172800000 },
+  { id: 1, name: '股票分析工具', status: 'active', progress: 75, updated: '2小时前', createdAt: Date.now() - 7200000, messageCount: 8 },
+  { id: 2, name: 'AI 新闻播客', status: 'done', progress: 100, updated: '今天 08:00', createdAt: Date.now() - 86400000, messageCount: 15 },
+  { id: 3, name: '客户线索挖掘', status: 'paused', progress: 30, updated: '昨天', createdAt: Date.now() - 172800000, messageCount: 3 },
 ];
 
 // Status badge configuration
@@ -95,6 +96,7 @@ export default function DashboardPage() {
         progress: 0,
         updated: '刚刚',
         createdAt: Date.now(),
+        messageCount: 0,
       };
       saveProjects([newProject, ...projects]);
       // Navigate to chat with new project
@@ -211,28 +213,51 @@ export default function DashboardPage() {
                           {getStatusConfig(project.status).label}
                         </span>
                       </div>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={(e) => { e.preventDefault(); openEditDialog(project); }}
-                          className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-xs"
-                        >
-                          ✏️
-                        </button>
-                        <button 
-                          onClick={(e) => { e.preventDefault(); setShowDeleteConfirm(project.id); }}
-                          className="w-7 h-7 rounded-full bg-gray-100 hover:bg-red-100 flex items-center justify-center text-xs"
-                        >
-                          🗑️
-                        </button>
+                      {/* V4: Progress Percentage Badge */}
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-bold ${project.progress === 100 ? 'text-green-500' : project.status === 'paused' ? 'text-yellow-500' : 'text-[#FF6B3D]'}`}>
+                          {project.progress}%
+                        </span>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={(e) => { e.preventDefault(); openEditDialog(project); }}
+                            className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-xs"
+                          >
+                            ✏️
+                          </button>
+                          <button 
+                            onClick={(e) => { e.preventDefault(); setShowDeleteConfirm(project.id); }}
+                            className="w-7 h-7 rounded-full bg-gray-100 hover:bg-red-100 flex items-center justify-center text-xs"
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5">
+                    <div className="flex items-center gap-2 mt-1">
                       <p className="text-xs text-gray-400">{project.updated}</p>
                       <span className="text-xs text-gray-300">•</span>
                       <p className="text-xs text-gray-400">创建于 {formatCreatedAt(project.createdAt)}</p>
+                      {/* V4: Message Count Indicator */}
+                      {project.messageCount !== undefined && project.messageCount > 0 && (
+                        <>
+                          <span className="text-xs text-gray-300">•</span>
+                          <p className="text-xs text-gray-400">💬 {project.messageCount} 条消息</p>
+                        </>
+                      )}
                     </div>
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-2">
-                      <div className={`h-full rounded-full ${project.progress === 100 ? 'bg-green-400' : project.status === 'paused' ? 'bg-yellow-400' : 'bg-gradient-to-r from-[#FF6B3D] to-[#FF8F6B]'}`} style={{ width: `${project.progress}%` }} />
+                    {/* V4: Enhanced Progress Bar with percentage */}
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] text-gray-500">任务进度</span>
+                        <span className="text-[10px] font-medium text-gray-600">{project.progress < 100 ? `还有 ${100 - project.progress}% 待完成` : '已完成'}</span>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full transition-all duration-300 ${project.progress === 100 ? 'bg-gradient-to-r from-green-400 to-green-500' : project.status === 'paused' ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' : 'bg-gradient-to-r from-[#FF6B3D] to-[#FF8F6B]'}`} 
+                          style={{ width: `${project.progress}%` }} 
+                        />
+                      </div>
                     </div>
                   </CardContent>
                 </Card>

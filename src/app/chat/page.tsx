@@ -189,6 +189,58 @@ function ChatContent() {
     }
   }, [messages, storageKey]);
 
+  // V4: Update project progress in localStorage for dashboard
+  useEffect(() => {
+    const updateProjectProgress = () => {
+      const projectsKey = 'lobster-projects';
+      const saved = localStorage.getItem(projectsKey);
+      if (!saved) return;
+      
+      try {
+        const projects = JSON.parse(saved);
+        const projectIndex = projects.findIndex((p: any) => p.name === projectName);
+        if (projectIndex === -1) return;
+        
+        // Calculate progress based on agent completion
+        const completedAgents = agents.filter(a => a.status === 'completed').length;
+        const totalAgents = agents.length;
+        const agentProgress = Math.round((completedAgents / totalAgents) * 100);
+        
+        // Also factor in message count (every 5 messages adds 10% progress, max 50%)
+        const messageProgress = Math.min(50, Math.floor(messages.length / 5) * 10);
+        
+        // Combined progress: agent completion (50%) + message count (50%)
+        const totalProgress = Math.round((agentProgress * 0.5) + (messageProgress));
+        
+        // Determine project status based on agents
+        let projectStatus: 'active' | 'done' | 'paused' = 'active';
+        if (agents.every(a => a.status === 'completed')) {
+          projectStatus = 'done';
+        } else if (agents.some(a => a.status === 'paused')) {
+          projectStatus = 'paused';
+        }
+        
+        // Update project
+        projects[projectIndex] = {
+          ...projects[projectIndex],
+          progress: totalProgress,
+          status: projectStatus,
+          updated: '刚刚',
+          messageCount: messages.length,
+        };
+        
+        localStorage.setItem(projectsKey, JSON.stringify(projects));
+      } catch (e) {
+        // Ignore errors
+      }
+    };
+    
+    // Only update if we have messages
+    if (messages.length > 0) {
+      updateProjectProgress();
+    }
+  }, [messages, agents, projectName]);
+
   // Get current time in HH:mm format
   const getCurrentTime = useCallback(() => {
     const now = new Date();
